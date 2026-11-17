@@ -74,6 +74,14 @@ th.num { text-align: right; }
 .verdict.mid { background: #fef9c3; color: #a16207; }
 .verdict.bad { background: #fee2e2; color: var(--red); }
 
+/* Percentile band + size curve */
+.bandcell { color: var(--dim); font-weight: 600; }
+.band.top .bandcell, td.bandcell { font-variant-numeric: tabular-nums; }
+.sechead { font-size: 15px; margin: 22px 0 10px; color: var(--ink); }
+.curvebox { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px; box-shadow: var(--shadow); }
+.curvebox svg { width: 100%; height: auto; display: block; }
+.curvebox .axis { font-size: 10px; fill: var(--dim); }
+
 /* Detail */
 .detail { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 26px; box-shadow: var(--shadow); margin-top: 8px; }
 .dhead h2 { font-size: 23px; margin: 0; }
