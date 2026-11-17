@@ -1,4 +1,4 @@
-// Radar v5 dashboard: CMC-grade board + detail + filter/sort, all client-side from window.RADAR.
+// Radar v6 dashboard: dense data-table style (Undercurrent-like), all client-side from window.RADAR.
 (function () {
   'use strict';
   const R = window.RADAR;
@@ -10,26 +10,22 @@
     if (n >= 1e3) return '$' + (n / 1e3).toFixed(0) + 'K';
     return '$' + n;
   };
-  const pct = (v) => v == null ? '<span class="dim">—</span>' : `<span class="badge ${v >= 0 ? 'up' : 'down'}">${v >= 0 ? '+' : ''}${v.toFixed(1)}%</span>`;
+  const pct = (v) => v == null ? '<span class="dim">—</span>' : `<span class="${v >= 0 ? 'up' : 'down'}">${v >= 0 ? '+' : ''}${v.toFixed(1)}%</span>`;
 
-  // Deterministic logo hue per protocol, so every row has a stable "coin face".
-  const HUES = [212, 152, 28, 262, 342, 182, 12, 82, 232, 312];
-  function hue(slug) {
-    let h = 0;
-    for (let i = 0; i < slug.length; i += 1) h = (h * 31 + slug.charCodeAt(i)) >>> 0;
-    return HUES[h % HUES.length];
+  // Verdict: the farm plan compressed to one word, from the model's own figures.
+  function verdict(r) {
+    const age = r.age_days == null ? 0 : r.age_days;
+    const growth = r.change_7d == null ? 0 : r.change_7d;
+    if (r.tvl_usd >= 5e8 && growth >= 0) return { word: 'Farm', tone: 'good' };
+    if (r.tvl_usd >= 2e8 && age >= 180) return { word: 'Watch', tone: 'mid' };
+    if (growth <= -20) return { word: 'Skip', tone: 'bad' };
+    return { word: 'Watch', tone: 'mid' };
   }
-  function logo(r) {
-    const h = hue(r.slug);
-    const letter = esc(r.name.charAt(0).toUpperCase());
-    return `<span class="logo" style="background:hsl(${h},72%,46%)">${letter}</span>`;
-  }
-  // TVL share bar: this row's TVL against the board's largest, as a thin inline chart.
-  const maxTVL = R.rows.reduce((m, r) => Math.max(m, r.tvl_usd || 0), 0);
-  function tvlBar(r) {
-    const w = Math.max(2, Math.round((r.tvl_usd / maxTVL) * 100));
-    const h = hue(r.slug);
-    return `<div class="tvlwrap"><span>${fmtUSD(r.tvl_usd)}</span><div class="tvlbar"><i style="width:${w}%;background:hsl(${h},70%,55%)"></i></div></div>`;
+  // Upside: implied value against a typical 10%-of-TVL launch valuation.
+  function upside(r) {
+    const launch = r.tvl_usd * 0.1;
+    if (!launch) return null;
+    return (r.implied_value_usd / launch - 1) * 100;
   }
 
   const state = { q: '', cat: '', sort: 'rank', dir: 1, view: 'board', slug: null };
@@ -59,30 +55,22 @@
     return rows;
   }
 
-  function marketBar() {
-    const total = R.rows.reduce((s, r) => s + (r.tvl_usd || 0), 0);
-    const rising = R.rows.filter((r) => r.change_7d != null && r.change_7d > 0).length;
-    const tracked = R.rows.filter((r) => r.change_7d != null).length;
-    return `
-      <div class="marketbar">
-        <div class="mitem"><span>TVL on board</span><b>${fmtUSD(total)}</b></div>
-        <div class="mitem"><span>7d movers up</span><b class="up">${rising}/${tracked}</b></div>
-        <div class="mitem"><span>Protocols</span><b>${R.rows.length}</b></div>
-        <div class="mitem"><span>Snapshot</span><b>${esc(R.as_of)}</b></div>
-      </div>`;
-  }
-
   function boardView() {
     const rows = filtered();
-    const body = rows.map((r) => `
+    const body = rows.map((r) => {
+      const v = verdict(r);
+      const up = upside(r);
+      return `
       <tr class="row" data-slug="${esc(r.slug)}">
         <td class="rank">${r.rank}</td>
-        <td class="cell-name">${logo(r)}<span><span class="name">${esc(r.name)}</span><span class="sub">${esc(r.category || 'uncategorized')}</span></span></td>
-        <td class="num cell-tvl">${tvlBar(r)}</td>
-        <td class="num">${pct(r.change_7d)}</td>
-        <td class="num">${r.age_days == null ? '<span class="dim">—</span>' : r.age_days + 'd'}</td>
+        <td class="cell-name"><span class="name">${esc(r.name)}</span><span class="sub">${esc(r.category || 'uncategorized')} · ${r.chains.slice(0, 2).map(esc).join(', ')}${r.chains.length > 2 ? ' +' + (r.chains.length - 2) : ''}</span></td>
+        <td class="num cell-tvl">${fmtUSD(r.tvl_usd)}</td>
+        <td class="num cell-chg">${pct(r.change_7d)}</td>
         <td class="num iv cell-iv">${fmtUSD(r.implied_value_usd)}</td>
-      </tr>`).join('');
+        <td class="num">${up == null ? '<span class="dim">—</span>' : pct(up)}</td>
+        <td class="num cell-verdict"><span class="verdict ${v.tone}">${v.word}</span></td>
+      </tr>`;
+    }).join('');
     return `
       <div class="controls">
         <div class="search"><span class="sicon">⌕</span><input id="q" placeholder="Search protocols…" value="${esc(state.q)}"></div>
@@ -91,12 +79,13 @@
       <div class="tablewrap">
       <table>
         <thead><tr>
-          <th data-k="rank" class="${state.sort === 'rank' ? 'sorted' : ''}">#</th>
-          <th data-k="name" class="${state.sort === 'name' ? 'sorted' : ''}">Protocol</th>
-          <th data-k="tvl_usd" class="num ${state.sort === 'tvl_usd' ? 'sorted' : ''}">TVL</th>
-          <th data-k="change_7d" class="num ${state.sort === 'change_7d' ? 'sorted' : ''}">7d %</th>
-          <th data-k="age_days" class="num ${state.sort === 'age_days' ? 'sorted' : ''}">Age</th>
-          <th data-k="implied_value_usd" class="num ${state.sort === 'implied_value_usd' ? 'sorted' : ''}">Implied value</th>
+          <th data-k="rank">#</th>
+          <th data-k="name">Protocol</th>
+          <th data-k="tvl_usd" class="num">TVL</th>
+          <th data-k="change_7d" class="num">7d %</th>
+          <th data-k="implied_value_usd" class="num">Implied value</th>
+          <th data-k="upside" class="num">Upside</th>
+          <th data-k="verdict">Verdict</th>
         </tr></thead>
         <tbody>${body}</tbody>
       </table>
@@ -107,15 +96,14 @@
     const r = R.rows.find((x) => x.slug === slug);
     if (!r) return boardView();
     const steps = (r.farm_steps || []).map((s) => `<li>${esc(s)}</li>`).join('');
-    const h = hue(r.slug);
+    const v = verdict(r);
     return `
       <button class="back" id="back">← Back to board</button>
       <div class="detail">
         <div class="dhead">
-          <span class="logo big" style="background:hsl(${h},72%,46%)">${esc(r.name.charAt(0).toUpperCase())}</span>
           <div>
-            <h2>${esc(r.name)}</h2>
-            <p class="meta">Rank #${r.rank} · ${esc(r.category || 'uncategorized')} · ${r.chains.map(esc).join(', ')}${r.listed_at ? ' · tracked since ' + esc(r.listed_at) : ''}</p>
+            <h2>#${r.rank} · ${esc(r.name)}</h2>
+            <p class="meta">${esc(r.category || 'uncategorized')} · ${r.chains.map(esc).join(', ')}${r.listed_at ? ' · tracked since ' + esc(r.listed_at) : ''} · verdict <span class="verdict ${v.tone}">${v.word}</span></p>
           </div>
         </div>
         <div class="grid">
@@ -165,13 +153,24 @@
   }
 
   function shell() {
+    const total = R.rows.reduce((s, r) => s + (r.tvl_usd || 0), 0);
+    const farms = R.rows.filter((r) => verdict(r).word === 'Farm').length;
     document.body.innerHTML = `
       <div class="shell">
         <div class="top">
           <div class="brand"><span class="mark">◉</span> TOKEN RADAR</div>
-          <div class="meta">model ${esc(R.model_version)} · ${R.watchlist_size} watchlisted · ${R.live_size} live tokens set aside</div>
+          <div class="meta">model ${esc(R.model_version)} · snapshot ${esc(R.as_of)}</div>
         </div>
-        ${marketBar()}
+        <div class="headline">
+          <h1>Pre-token protocols, ranked by what their token would be worth</h1>
+          <p>The board reads one sealed DefiLlama snapshot: ${R.watchlist_size} watchlisted protocols, ${R.board_size} rows scored, ${R.live_size} live tokens set aside. Verdicts come from the model's own figures — TVL, 7-day growth and age — never a name list.</p>
+        </div>
+        <div class="marketbar">
+          <div class="mitem"><span>TVL on board</span><b>${fmtUSD(total)}</b></div>
+          <div class="mitem"><span>Board rows</span><b>${R.board_size}</b></div>
+          <div class="mitem"><span>Farm verdicts</span><b class="up">${farms}</b></div>
+          <div class="mitem"><span>Watchlist</span><b>${R.watchlist_size}</b></div>
+        </div>
         <div id="board" tabindex="-1" aria-busy="true"></div>
         <p class="foot">Implied value is this model's own estimate from the sealed snapshot's figures — not a prediction that a token will be issued, and not financial advice. Always verify a protocol on its own site before depositing.</p>
       </div>`;
