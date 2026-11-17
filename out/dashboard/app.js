@@ -112,6 +112,7 @@
       </tr>`;
     }).join('');
     return `
+      ${sizeCurve()}
       <div class="controls">
         <div class="search"><span class="sicon">⌕</span><input id="q" placeholder="Search protocols…" value="${esc(state.q)}"></div>
         <select id="cat"><option value="">All categories</option>${categories().map((c) => `<option${state.cat === c ? ' selected' : ''}>${esc(c)}</option>`).join('')}</select>
@@ -130,8 +131,7 @@
         </tr></thead>
         <tbody>${body}</tbody>
       </table>
-      </div>
-      ${sizeCurve()}`;
+      </div>`;
   }
 
   function detailView(slug) {
