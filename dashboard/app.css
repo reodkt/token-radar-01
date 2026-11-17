@@ -122,7 +122,7 @@ th.num { text-align: right; }
   .marketbar { gap: 8px 20px; padding: 12px 14px; }
   .mitem { min-width: 40%; }
   .tablewrap { background: none; border: none; box-shadow: none; overflow: visible; }
-  table, thead, tbody, tr, td { display: block; width: 100%; }
+  table, thead, tbody, tr, td { display: block; width: 100%; min-width: 0 !important; }
   thead { display: none; }
   tr.row {
     background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
@@ -134,9 +134,12 @@ th.num { text-align: right; }
   }
   tr.row:hover td { background: none; }
   tbody tr:nth-child(even) td { background: none; }
-  td { border: none; padding: 0; }
+  td { border: none; padding: 0; min-width: 0; }
   td.rank { grid-area: rank; font-size: 15px; }
-  td.cell-name { grid-area: name; }
+  td.cell-name { grid-area: name; white-space: normal; min-width: 0; }
+  td.cell-name > span { min-width: 0; }
+  td.cell-name .name { white-space: normal; word-break: break-word; display: block; }
+  td.cell-name .sub { white-space: normal; }
   td.cell-iv { grid-area: iv; text-align: right; }
   td.cell-tvl { grid-area: stats; }
   .tvlwrap { flex-direction: row; align-items: center; justify-content: flex-start; gap: 10px; }
