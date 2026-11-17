@@ -1,9 +1,12 @@
-// Radar v2: skor nilai implisit dari angka snapshot sendiri (tvl, growth 7d, umur, chain spread).
-// Model: implied = tvl * MULT_BASE * (1 + w_g * g) * ageFactor * chainFactor
-//   g          = growth 7d di-clamp [-60, +150]
-//   ageFactor  = kurva S: protokol terlalu muda (<30h) & terlalu tua (>3th) dapat diskon
-//   chainFactor= 1 + 0.04 * (jumlah chain - 1), cap 1.25 — multi-chain = distribusi user lebih luas
-// Tidak ada nama protokol yang di-hardcode; setiap baris dinilai fungsi yang sama.
+// Radar v2: score every pre-token protocol from the sealed snapshot's own figures.
+//
+//   implied = tvl_usd x MULT_BASE x (1 + w_g x growth) x ageFactor x chainFactor
+//
+//   growth      = change_7d clamped to [-60, +150] per cent
+//   ageFactor   = a rise from 0.55 at 30 days to 1.0 at the 540-day sweet spot, easing to 0.85 by 3 years
+//   chainFactor = 1 + 4% per extra chain, capped at 1.25 — a wider chain spread means a wider user base
+//
+// No protocol name is ever special-cased: the same function scores every row.
 
 export interface SnapshotProtocol {
   slug: string;
@@ -141,7 +144,7 @@ export function ageDays(asOf: string, listedAt: string | null): number | null {
   return Math.max(0, Math.floor((a - b) / DAY_MS));
 }
 
-/** Faktor umur: naik dari 0.55 di age_min ke 1.0 di age_sweet, lalu turun ke 0.85 di age_max. */
+/** The age curve: too young to have proven itself discounts hard, the sweet spot does not. */
 export function ageFactor(age: number | null, m: ModelConstants): number {
   const d = age ?? m.age_sweet_days / 2;
   if (d <= m.age_min_days) return 0.55;
@@ -150,12 +153,12 @@ export function ageFactor(age: number | null, m: ModelConstants): number {
   return 1 - 0.15 * (d - m.age_sweet_days) / (m.age_max_days - m.age_sweet_days);
 }
 
-/** Faktor sebaran chain: 1 di satu chain, +4% tiap chain ekstra, cap chain_cap. */
+/** The chain spread: each extra chain adds the bonus, up to the cap. */
 export function chainFactor(chains: string[], m: ModelConstants): number {
   return Math.min(m.chain_cap, 1 + Math.max(0, chains.length - 1) * m.chain_bonus);
 }
 
-/** Nilai implisit satu protokol. */
+/** One protocol's implied value and the multipliers behind it. */
 export function impliedValue(p: SnapshotProtocol, asOf: string, m: ModelConstants): { implied: number; growthPct: number; growthMult: number; maturityMult: number; chainMult: number; age: number | null } {
   const age = ageDays(asOf, p.listed_at);
   const growthPct = Math.min(m.growth_cap, Math.max(m.growth_floor, finite(p.change_7d, 0)));
@@ -167,7 +170,7 @@ export function impliedValue(p: SnapshotProtocol, asOf: string, m: ModelConstant
   return { implied, growthPct, growthMult, maturityMult, chainMult, age };
 }
 
-/** Protokol yang layak dinilai: benar-benar pre-token (tanpa gecko, tanpa symbol, tanpa mcap). */
+/** Rankable means genuinely pre-token: no CoinGecko id, no symbol, no market cap. */
 export function isRankable(p: SnapshotProtocol): boolean {
   return p.gecko_id === null && p.symbol === null && p.mcap_usd === null;
 }
@@ -176,8 +179,7 @@ function bySlug(protocols: SnapshotProtocol[]): Map<string, SnapshotProtocol> {
   return new Map(protocols.map((p) => [p.slug, p]));
 }
 
-export interface BoardSummary { watchlist_size: number; board_size: number; early_size: number; live_size: number; }
-
+/** The board: every watchlist slug plus the strongest pre-token ones below the floor, ranked. */
 export function buildBoard(snapshot: Snapshot, model: ModelConstants = MODEL): BoardRow[] {
   const index = bySlug(snapshot.protocols);
   const chosen = new Map<string, SnapshotProtocol>();
@@ -225,6 +227,7 @@ export function buildBoard(snapshot: Snapshot, model: ModelConstants = MODEL): B
 
 const round4 = (n: number): number => Math.round(n * 1e4) / 1e4;
 
+/** A step as one string: its action, then its cost and time, inside the gate's 20..600 characters. */
 export function stepText(step: FarmStep): string {
   let s = `${step.text} Cost: ${step.cost}. Time: ${step.time}.`;
   if (s.length > 600) s = `${s.slice(0, 596)}...`;
@@ -233,9 +236,10 @@ export function stepText(step: FarmStep): string {
 }
 
 function chainOf(p: SnapshotProtocol): string {
-  return p.chains.length > 0 ? p.chains[0]! : 'its main chain';
+  return p.chains.length > 0 ? p.chains[0] : 'its main chain';
 }
 
+/** Position size follows the protocol's own TVL: bigger rooms fit bigger positions. */
 function capitalFor(p: SnapshotProtocol): number {
   if (p.tvl_usd >= 5_000_000_000) return 250;
   if (p.tvl_usd >= 1_000_000_000) return 150;
@@ -243,6 +247,7 @@ function capitalFor(p: SnapshotProtocol): number {
   return 50;
 }
 
+/** Younger protocols get a longer qualifying window: their snapshots are fewer. */
 function holdDaysFor(age: number | null): number {
   if (age === null) return 30;
   if (age < 180) return 60;
@@ -250,6 +255,7 @@ function holdDaysFor(age: number | null): number {
   return 30;
 }
 
+/** The category's one action, in the words a farmer can follow. */
 function actionFor(p: SnapshotProtocol, capital: number, chain: string): string {
   const c = (p.category ?? '').toLowerCase();
   const name = p.name;
@@ -266,22 +272,23 @@ function actionFor(p: SnapshotProtocol, capital: number, chain: string): string 
   return `Deposit $${capital} of USDC into ${name} on ${chain} and keep the position open.`;
 }
 
+/** A plan of six steps, each derived from the protocol's own record — never a list of names. */
 export function farmSteps(p: SnapshotProtocol, age: number | null): FarmStep[] {
   const chain = chainOf(p);
   const capital = capitalFor(p);
   const hold = holdDaysFor(age);
   const action = actionFor(p, capital, chain);
   return [
-    { text: `Open a dedicated wallet for this farm, funded only with what you plan to deposit, and keep its seed offline.`, cost: 'under $3 of gas for the first transaction', time: '5 minutes' },
+    { text: 'Open a dedicated wallet for this farm, funded only with what you plan to deposit, and keep its seed offline.', cost: 'under $3 of gas for the first transaction', time: '5 minutes' },
     { text: action, cost: `$${capital} of capital plus $2-$8 of gas`, time: '15 minutes to set up' },
-    { text: `Return weekly and make one qualifying action — a top-up, a swap, or a vote — so the wallet stays active across snapshots.`, cost: 'about $2 of gas a week', time: '10 minutes a week' },
+    { text: 'Return weekly and make one qualifying action — a top-up, a swap, or a vote — so the wallet stays active across snapshots.', cost: 'about $2 of gas a week', time: '10 minutes a week' },
     { text: `Keep the position open for ${hold} days so your activity spans more than one snapshot window.`, cost: `the $${capital} stays in the position`, time: `${hold} days` },
-    { text: `Check the protocol's own announcements channel weekly for a points program or token vote, and claim only from links it publishes.`, cost: 'no fee to check', time: '5 minutes a week' },
-    { text: `Log the wallet, dates and every transaction in a farm log, so you can repeat or unwind the position without guessing.`, cost: 'nothing but the time', time: '5 minutes after each action' },
+    { text: "Check the protocol's own announcements channel weekly for a points program or token vote, and claim only from links it publishes.", cost: 'no fee to check', time: '5 minutes a week' },
+    { text: 'Log the wallet, dates and every transaction in a farm log, so you can repeat or unwind the position without guessing.', cost: 'nothing but the time', time: '5 minutes after each action' },
   ];
 }
 
-/** The dashboard's live view: protocols whose token already trades, by market cap. */
+/** The live set: protocols whose token already trades, kept apart from the ranked board. */
 export function liveRows(snapshot: Snapshot, model: ModelConstants = MODEL): LiveRow[] {
   return snapshot.protocols
     .filter((p) => !isRankable(p) && p.mcap_usd !== null)
@@ -290,7 +297,7 @@ export function liveRows(snapshot: Snapshot, model: ModelConstants = MODEL): Liv
     .map((p) => ({ slug: p.slug, name: p.name, category: p.category, chains: p.chains, tvl_usd: p.tvl_usd, mcap_usd: p.mcap_usd, change_7d: p.change_7d }));
 }
 
-/** The whole radar: parse, score, rank, and package for the dashboard. */
+/** Parse, score, rank, and package everything the dashboard needs. */
 export function buildRadar(snapshot: Snapshot, model: ModelConstants = MODEL): { board: BoardRow[]; radar: RadarData } {
   const board = buildBoard(snapshot, model);
   const live = liveRows(snapshot, model);
@@ -342,17 +349,17 @@ export function parseSnapshot(text: string): Snapshot {
   return raw as Snapshot;
 }
 
-/** The gate's own board checks, as one issue string or null. */
+/** The gate's own board rules, as one issue string or null when the board passes. */
 export function boardIssue(board: BoardRow[], snapshot: Snapshot): string | null {
   if (board.length < 100) return `the board holds ${board.length} rows, fewer than 100`;
   if (board.length > 4000) return `the board holds ${board.length} rows, more than 4000`;
-  const seen = new Set<string>();
+  const seen = new Set();
   for (const row of board) {
     if (seen.has(row.slug)) return `slug ${row.slug} appears twice`;
     seen.add(row.slug);
     if (!Number.isInteger(row.rank) || row.rank < 1) return `slug ${row.slug} has a bad rank`;
     if (!Number.isInteger(row.implied_value_usd) || row.implied_value_usd < 1) return `slug ${row.slug} has a bad implied value`;
-    if (!Array.isArray(row.farm_steps) || row.farm_steps.length < 3 || row.farm_steps.length > 12) return `slug ${row.slug} has ${row.farm_steps?.length} farm steps, outside 3..12`;
+    if (!Array.isArray(row.farm_steps) || row.farm_steps.length < 3 || row.farm_steps.length > 12) return `slug ${row.slug} has ${row.farm_steps ? row.farm_steps.length : 0} farm steps, outside 3..12`;
     for (const s of row.farm_steps) {
       const t = s.trim();
       if (t.length < 20 || t.length > 600) return `slug ${row.slug} has a farm step of ${t.length} characters, outside 20..600`;
@@ -363,7 +370,7 @@ export function boardIssue(board: BoardRow[], snapshot: Snapshot): string | null
     if (ranks[i] !== i + 1) return `ranks are not exactly 1..${board.length}`;
   }
   for (let i = 1; i < board.length; i++) {
-    if (board[i]!.implied_value_usd > board[i - 1]!.implied_value_usd) return `row ${i + 1} outranks row ${i} on a smaller implied value`;
+    if (board[i].implied_value_usd > board[i - 1].implied_value_usd) return `row ${i + 1} outranks row ${i} on a smaller implied value`;
   }
   const index = bySlug(snapshot.protocols);
   for (const slug of snapshot.watchlist) {
