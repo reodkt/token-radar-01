@@ -100,7 +100,14 @@ th.num { text-align: right; }
 .back { background: var(--panel); border: 1px solid var(--line); color: var(--ink); border-radius: 8px; padding: 8px 15px; cursor: pointer; font: inherit; margin-bottom: 12px; }
 .back:hover { background: var(--panel2); }
 
-.foot { color: var(--dim); font-size: 12px; padding-top: 26px; max-width: 80ch; }
+.foot { color: var(--dim); font-size: 12px; padding-top: 28px; max-width: 80ch; }
+
+/* Methodology panel (Undercurrent-style) */
+.method { background: var(--panel2); border: 1px solid var(--line); border-radius: 12px; padding: 16px 20px; margin: 18px 0 4px; }
+.method h3 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--dim); }
+.method p { margin: 6px 0; font-size: 13.5px; color: var(--ink); max-width: 95ch; }
+.method code { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 1px 7px; font-family: var(--mono); font-size: 12.5px; }
+.hashstrip { color: var(--dim); font-size: 11px; font-family: var(--mono); padding-top: 14px; opacity: 0.75; }
 
 /* Mobile: compact cards */
 @media (max-width: 760px) {

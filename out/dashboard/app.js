@@ -213,8 +213,15 @@
           <div class="mitem"><span>Farm verdicts</span><b class="up">${farms}</b></div>
           <div class="mitem"><span>Watchlist</span><b>${R.watchlist_size}</b></div>
         </div>
+        <div class="method">
+          <h3>Methodology</h3>
+          <p><b>Implied value.</b> A power-law fit of fully-diluted valuations on TVL across comparable launched protocols: <code>V(TVL) = a · (TVL + $100M)^b</code>, coefficients fitted by Huber regression on the sealed snapshot's listed peers (robust to outliers), then offset per category so no family is systematically over- or under-called.</p>
+          <p><b>Walk-forward tested.</b> Coefficients are refit on data older than 90 days and scored out-of-sample on the newest 90 — reported error, not in-sample fit, is what the board ships.</p>
+          <p><b>Verdicts.</b> Farm = implied value sits at or above the board's 75th percentile with positive 7-day growth and age under 5 years; Watch = strong value but flat or shrinking flows; Skip = below the 10th percentile or stale. Every verdict is recomputed from the snapshot's own figures — never a name list.</p>
+        </div>
         <div id="board" tabindex="-1" aria-busy="true"></div>
         <p class="foot">Implied value is this model's own estimate from the sealed snapshot's figures — not a prediction that a token will be issued, and not financial advice. Always verify a protocol on its own site before depositing.</p>
+        <p class="hashstrip">token-radar · snapshot ${esc(R.as_of)} · model ${esc(R.model_version)}</p>
       </div>`;
   }
 
