@@ -117,7 +117,7 @@ th.num { text-align: right; }
     display: grid; grid-template-columns: auto 1fr auto; grid-template-areas:
       "rank name iv"
       "sub sub sub"
-      "stats stats verdict";
+      "tvl chg verdict";
     gap: 3px 10px; align-items: center;
   }
   tr.row:hover td { background: none; }
@@ -127,7 +127,11 @@ th.num { text-align: right; }
   td.cell-name .name { display: block; white-space: normal; word-break: break-word; }
   td.cell-name .sub { grid-area: sub; white-space: normal; }
   td.cell-iv { grid-area: iv; text-align: right; }
-  td.cell-tvl, td.cell-chg, td.cell-up { grid-area: stats; display: inline; }
+  td.cell-tvl { grid-area: tvl; }
+  td.cell-chg { grid-area: chg; text-align: left; }
+  td.cell-up { display: none; }
+  td.cell-tvl .tvlwrap { flex-direction: column; align-items: flex-start; gap: 2px; }
+  td.cell-tvl .tvlbar { width: 100%; }
   td.cell-verdict { grid-area: verdict; text-align: right; }
   .detail { padding: 18px; }
 }
