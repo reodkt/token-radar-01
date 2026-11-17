@@ -1,4 +1,5 @@
 // Token Radar v2 — main entry (Node 22, standard library only).
+// Rev 2: model constants surfaced to the dashboard's model-note; board checks run before write.
 //
 // Reads the sealed snapshot (/input/snapshot.json or --input <file|dir>), scores every pre-token
 // protocol with the radar-v2 model in lib/model.ts, and hands the entry in:
