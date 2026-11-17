@@ -1,17 +1,14 @@
-// A working token-radar-01 entry (Node 22, standard library only).
+// Token Radar v2 — main entry (Node 22, standard library only).
 //
-// The program reads the sealed snapshot from /input/snapshot.json (or --input <file|dir>), scores every
-// pre-token protocol with the model in lib/model.ts, writes the ranked board to /output/board.json, and
-// copies this repository's dashboard/ and screenshots/ to /output. Last, it writes /output/dossier.json,
-// the summary the judge reads, with the vendored make.fun library.
+// Reads the sealed snapshot (/input/snapshot.json or --input <file|dir>), scores every pre-token
+// protocol with the radar-v2 model in lib/model.ts, and hands the entry in:
+//   /output/board.json      the ranked board (rows: rank, slug, implied_value_usd, farm_steps, ...)
+//   /output/data.js         the dashboard's data, as window.RADAR
+//   /output/dashboard/      the static page (index.html, app.css, app.js) — no network, no framework
+//   /output/screenshots/    3 images the maker took of the page in a browser
+//   /output/dossier.json    the judge's summary, via vendor/makefun-board.ts
 //
-// The dashboard is a static page, no framework and no network: dashboard/index.html, dashboard/app.css
-// and dashboard/app.js read /output/data.js, which this program writes from the same board. A starting
-// point, not a winner: it covers the watchlist, states the model and gives every protocol a farm plan.
-// Change the model, the page or the plan; keep the gate's shape.
-//
-// Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
-//   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts --input ../input/snapshot.json
+// Outside the grader: mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts --input ../input/snapshot.json
 
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -21,15 +18,15 @@ import { buildDossier } from './vendor/makefun-board.ts';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 
-/** The scorer's own caps (reference/gate.json): the text cap shapes the bytes, the rest refuse. */
+/** The scorer's caps: the text cap shapes the dossier's bytes, the rest refuse outright. */
 const TEXT_MAX_BYTES = 65_536;
 const SCREENSHOT_CAPS = { max: 4, max_bytes: 524_288 };
 const IMAGE_NAME = /^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$/;
 
-/** --name <value> out of the arguments, or the fallback. */
-function arg(name: string, fallback: string): string {
+/** One named argument (--name value or --name=value), else the fallback. */
+function arg(name, fallback) {
   const at = process.argv.indexOf(`--${name}`);
-  if (at >= 0 && at + 1 < process.argv.length) return process.argv[at + 1]!;
+  if (at >= 0 && at + 1 < process.argv.length) return process.argv[at + 1];
   const withEquals = process.argv.find((a) => a.startsWith(`--${name}=`));
   return withEquals === undefined ? fallback : withEquals.slice(name.length + 3);
 }
@@ -42,6 +39,7 @@ if (!existsSync(inputFile)) {
 }
 const out = arg('output', process.env.MAKEFUN_OUTPUT_DIR ?? '/output');
 
+// Score, then check the gate's own board rules before anything is written.
 const snapshot = parseSnapshot(readFileSync(inputFile, 'utf8'));
 const { board, radar } = buildRadar(snapshot);
 const issue = boardIssue(board, snapshot);
@@ -54,11 +52,11 @@ mkdirSync(out, { recursive: true });
 writeFileSync(join(out, 'board.json'), `${JSON.stringify({ rows: board })}\n`);
 writeFileSync(join(out, 'data.js'), dataScript(radar));
 
-/** Copy one directory's regular files into `to`, skipping names that start with a dot. */
-function copyFiles(from: string, to: string): string[] {
+/** Copy a directory's regular files into `to`, skipping dot names; returns the names copied. */
+function copyFiles(from, to) {
   if (!existsSync(from)) return [];
   mkdirSync(to, { recursive: true });
-  const copied: string[] = [];
+  const copied = [];
   for (const name of readdirSync(from)) {
     if (name.startsWith('.')) continue;
     const path = join(from, name);
@@ -82,7 +80,7 @@ for (const name of shots) {
   }
 }
 
-// The dossier is written last: the scorer rebuilds it from this /output and compares bytes.
+// The dossier goes last: the scorer rebuilds it from this /output and compares bytes.
 writeFileSync(join(out, 'dossier.json'), buildDossier(out, { text_max_bytes: TEXT_MAX_BYTES, screenshots: SCREENSHOT_CAPS, dashboard: { max_files: 400, max_bytes: 4_194_304 } }));
 
 process.stdout.write(
